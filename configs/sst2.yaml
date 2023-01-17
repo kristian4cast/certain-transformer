@@ -2,7 +2,7 @@ hydra:
   run:
     dir: ${output_dir}/${data.task_name}/${ue.dropout_type}_${ue.dropout_subs}/${data.subsample_perc}/${suffix}/${now:%Y-%m-%d}/${now:%H-%M-%S}-${repeat}
 model:
-    model_name_or_path: 'google/electra-base-discriminator'
+    model_name_or_path: 'google/electra-small-discriminator' #'google/electra-base-discriminator'
     tokenizer_name: ''
     n_epochs: 4
     already_finetuned: false
@@ -12,7 +12,7 @@ ue:
     committee_size: 20
     dropout_subs: 'last'
     eval_bs: 1000
-    use_cache: True
+    use_cache: False
     eval_passes: False
     dropout:
         max_n: 100
@@ -29,11 +29,11 @@ training:
 
 data:
     task_name: 'sst-2'
-    data_dir: '../workdir/glue_data/SST-2/'
+    data_dir: 'workdir/glue_data/SST-2/'
     subsample_perc: 0.1
     
-cache_dir: '../workdir/cache/'
-output_dir: '../workdir/results/'
+cache_dir: 'workdir/cache/'
+output_dir: 'workdir/results/'
 repeat: 0
 do_predict: True
 seed: 42

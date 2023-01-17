@@ -15,6 +15,7 @@ import random
 import torch
 import hydra
 
+import wandb
 from utils_wandb import init_wandb, wandb
 from utils_transformers_cached import (
     ElectraForSequenceClassificationCached,
@@ -44,13 +45,15 @@ from transformers import ElectraForSequenceClassification
 from utils_exps import set_last_dropout, get_last_dropout
 from utils_electra import ElectraClassificationHeadCustom
 
+import datasets
 from datasets import load_metric
 
 
 import logging
 
 log = logging.getLogger(__name__)
-
+print(f"{log=}")
+logging.basicConfig(level=logging.INFO)
 
 def convert_dropouts(model, ue_args):
     if ue_args.dropout_type == "MC":
@@ -278,27 +281,45 @@ def train_eval_glue_model(config, training_args, data_args, work_dir):
     print(model)
 
     train_dataset = None
+    dataset = datasets.load_dataset('glue', fix_task_name(data_args.task_name), cache_dir=config.cache_dir)
+    print(f"{dataset.column_names=}")
+    dataset = dataset.remove_columns(['idx'])
+    print(f"{dataset=}")
+    encoded_dataset = dataset.map(lambda examples: tokenizer(examples["sentence"], return_tensors="pt", padding='max_length', truncation=True, max_length=52), batched=True)
+    print(f"{encoded_dataset['train']['sentence'][:40]=}")
+    print(f"{[len(x.split(' ')) for x in encoded_dataset['train']['sentence']][:40]=}")
+    
     if config.do_train or (
         config.ue.dropout_type == "DPP" and config.ue.dropout.dry_run_dataset != "eval"
     ):
-        train_dataset = GlueDataset(
-            data_args, tokenizer=tokenizer, cache_dir=config.cache_dir
-        )
+        print(f"data_args: {data_args}")
 
-    if config.do_train and config.data.subsample_perc > 0:
-        indexes = list(range(len(train_dataset)))
-        train_indexes = random.sample(
-            indexes, int(len(train_dataset) * config.data.subsample_perc)
-        )
-        train_dataset = torch.utils.data.Subset(train_dataset, train_indexes)
+        # train_dataset = GlueDataset(
+        #     data_args, tokenizer=tokenizer, cache_dir=config.cache_dir
+        # )
+        train_dataset = encoded_dataset["train"] 
+        print(f"train_dataset: {train_dataset}")
+    # if config.do_train and config.data.subsample_perc > 0:
+    #     if train_dataset is None:
+    #         raise Exception(f"{train_dataset=} is None!")
+    #     indexes = list(range(len(train_dataset)))
+    #     train_indexes = random.sample(
+    #         indexes, int(len(train_dataset) * config.data.subsample_perc)
+    #     )
+    #     train_dataset = torch.utils.data.Subset(train_dataset, train_indexes)
 
     if mnli_mm:
         data_args = dataclasses.replace(data_args, task_name="mnli-mm")
 
+    # eval_dataset = (
+    #     GlueDataset(
+    #         data_args, tokenizer=tokenizer, mode="dev", cache_dir=config.cache_dir
+    #     )
+    #     if config.do_eval
+    #     else None
+    # )
     eval_dataset = (
-        GlueDataset(
-            data_args, tokenizer=tokenizer, mode="dev", cache_dir=config.cache_dir
-        )
+        encoded_dataset["validation"]
         if config.do_eval
         else None
     )
@@ -317,7 +338,7 @@ def train_eval_glue_model(config, training_args, data_args, work_dir):
         eval_dataset=eval_dataset,
         compute_metrics=metric_fn,
     )
-
+    print(f"{training_args=}")
     if config.do_train:
         trainer.train(
             model_path=model_args.model_name_or_path
@@ -351,15 +372,16 @@ def update_config(cfg_old, cfg_new):
     return cfg_old
 
 
-@hydra.main(config_path=os.environ["HYDRA_CONFIG_PATH"])
+@hydra.main(config_path=os.environ["HYDRA_CONFIG_PATH"], config_name=os.environ["HYDRA_CONFIG_NAME"])
 def main(config):
     os.environ["WANDB_WATCH"] = "False"  # To disable Huggingface logging
+    os.environ["WANDB_DISABLED"] = "true"
 
     auto_generated_dir = os.getcwd()
     log.info(f"Work dir: {auto_generated_dir}")
     os.chdir(hydra.utils.get_original_cwd())
 
-    wandb_run = init_wandb(auto_generated_dir, config)
+    wandb_run = wandb.init(dir=auto_generated_dir, config=config)
 
     args_train = TrainingArguments(output_dir=auto_generated_dir)
     args_train = update_config(args_train, config.training)
