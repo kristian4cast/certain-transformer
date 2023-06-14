@@ -348,8 +348,8 @@ def train_eval_glue_model(config, training_args, data_args, work_dir):
         trainer.save_model(work_dir)
         # For convenience, we also re-save the tokenizer to the same directory,
         # so that you can share your model easily on huggingface.co/models =)
-        if trainer.is_world_master():
-            tokenizer.save_pretrained(work_dir)
+        # if trainer.is_world_master():
+        tokenizer.save_pretrained(work_dir)
 
     if config.do_eval:
         do_predict_eval(
